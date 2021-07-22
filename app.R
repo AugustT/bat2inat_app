@@ -8,6 +8,7 @@
 #
 library(shiny)
 library(bat2inat)
+library(shinythemes)
 library(reticulate)
 
 post <- FALSE
@@ -32,21 +33,10 @@ log <- data.frame(sp = NULL,
                   long = NULL,
                   date = NULL)
 
-# Function to send console ot app
-withConsoleRedirect <- function(containerId, expr) {
-    # Change type="output" to type="message" to catch stderr
-    # (messages, warnings, and errors) instead of stdout.
-    txt <- capture.output(results <- expr, type = "output")
-    if (length(txt) > 0) {
-        insertUI(paste0("#", containerId), where = "beforeEnd",
-                 ui = paste0(txt, "\n", collapse = "")
-        )
-    }
-    results
-}
-
 # Define UI 
 ui <- fluidPage(
+    
+    theme = shinytheme("darkly"),
 
     # Application title
     titlePanel("Bat 2 iNat"),
