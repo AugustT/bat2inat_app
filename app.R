@@ -21,12 +21,6 @@ load('../../../t_a_a/OneDrive - UKCEH/bat2inat/token.rdata')
 # Import pyinaturalist
 pynat <- import('pyinaturalist')
 
-# this can be used to test login
-upload_token <- pynat$get_access_token(token[[1]],
-                                       token[[2]],
-                                       token[[3]],
-                                       token[[4]])
-
 # Set up log
 log <- data.frame(sp = NULL,
                   lat = NULL,
@@ -58,6 +52,45 @@ ui <- fluidPage(
 # Define server logic 
 server <- function(input, output) {
 
+    vals <- reactiveValues(upload_token = NULL)
+    
+    loginModal <- function(failed = FALSE) {
+        modalDialog(
+            size = 's',
+            textInput("username", "Username",
+                      placeholder = 'Enter your iNaturalist username'
+            ),
+            passwordInput("password", label = "Password", 
+                          placeholder = 'Enter your iNaturalist password'),
+            if (failed)
+                div(tags$b("Username or password incorrect", style = "color: red;")),
+            
+            footer = tagList(
+                actionButton("login", "Login")
+            )
+        )
+    }
+    
+    showModal(loginModal())
+    
+    observeEvent(input$login, {
+        
+        # this can be used to test login
+        upload_token <- try({
+            pynat$get_access_token(input$username,
+                                   input$password,
+                                   token[[3]],
+                                   token[[4]])
+        }, silent = TRUE)
+        print(upload_token)
+        if(length(upload_token) == 1 &
+            class(upload_token) == 'character'){
+            removeModal()
+        } else {
+            showModal(loginModal(failed = TRUE))
+        }
+    })
+    
     observe({
         
         files <- input$files
