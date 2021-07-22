@@ -17,14 +17,14 @@ post <- FALSE
 # load the token
 load('../../../t_a_a/OneDrive - UKCEH/bat2inat/token.rdata')
 
+# Import pyinaturalist
+pynat <- import('pyinaturalist')
+
 # this can be used to test login
 upload_token <- pynat$get_access_token(token[[1]],
                                        token[[2]],
                                        token[[3]],
                                        token[[4]])
-
-# Import pyinaturalist
-pynat <- import('pyinaturalist')
 
 # Set up log
 log <- data.frame(sp = NULL,
