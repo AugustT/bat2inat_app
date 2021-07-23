@@ -118,7 +118,12 @@ server <- function(input, output) {
                     insertUI(
                         selector = "#console",
                         where = "afterEnd",
-                        ui = div(paste('No metadata', name)), 
+                        ui = div(h3(name),
+                                 span('Skipped - No metadata'),
+                                 style = "border-radius: 25px;
+                                          border: 2px solid rgba(255, 102, 0, 0.8);
+                                          padding: 0px 20px 20px 20px;
+                                          margin: 10px;"), 
                         immediate = TRUE
                     )
                     next
@@ -138,7 +143,12 @@ server <- function(input, output) {
                         insertUI(
                             selector = "#console",
                             where = "afterEnd",
-                            ui = div(paste('Duplicate in batch', name)), 
+                            ui = div(h3(name),
+                                     span('Skipped - Duplicate in batch'),
+                                     style = "border: 2px solid rgba(255, 183, 0, 0.8);
+                                              border-radius: 25px;
+                                              padding: 0px 20px 20px 20px;
+                                              margin: 10px;"), 
                             immediate = TRUE
                         )
                         next
@@ -165,7 +175,12 @@ server <- function(input, output) {
                     insertUI(
                         selector = "#console",
                         where = "afterEnd",
-                        ui = div(paste('Duplicate online', name)), 
+                        ui = div(h3(name),
+                                 span('Skipped - Duplicate online'),
+                                 style = "border: 2px solid rgba(255, 183, 0, 0.8);
+                                          border-radius: 25px;
+                                          padding: 0px 20px 20px 20px;
+                                          margin: 10px;"), 
                         immediate = TRUE
                     )
                     next
@@ -246,7 +261,12 @@ server <- function(input, output) {
                     insertUI(
                         selector = "#console",
                         where = "afterEnd",
-                        ui = div(paste('Skipped', name)), 
+                        ui = div(h3(name),
+                                 span('Success - Observation uploaded'),
+                                 style = "border: 2px solid rgba(0, 255, 166, 0.4);
+                                          border-radius: 25px;
+                                          padding: 0px 20px 20px 20px;
+                                          margin: 10px;"), 
                         immediate = TRUE
                     )
                     
@@ -257,7 +277,12 @@ server <- function(input, output) {
                     insertUI(
                         selector = "#console",
                         where = "afterEnd",
-                        ui = div(paste('Skipped', name)), 
+                        ui = div(h3(name),
+                                 span('Success - Upload disabled'),
+                                 style = "border: 2px solid rgba(0, 255, 166, 0.4);
+                                          border-radius: 25px;
+                                          padding: 0px 20px 20px 20px;
+                                          margin: 10px;"),
                         immediate = TRUE
                     )
                     
@@ -266,17 +291,6 @@ server <- function(input, output) {
         }
             
         }
-        
-        # withConsoleRedirect("console", {
-        #     
-        #     if(!is.null(input$files)){
-        #         send_observations(files = input$files$datapath,
-        #                           post = FALSE, 
-        #                           token = token)
-        #         # str(cars)
-        #     }
-        #     
-        # })
     })
 }
 
