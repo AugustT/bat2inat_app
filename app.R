@@ -13,8 +13,6 @@ library(reticulate)
 
 post <- FALSE
 
-# file <- "C:\\Users\\t_a_a\\OneDrive - UKCEH\\Bat audio - EM touch\\Cholsey marsh - 19_07_21//Session_20210718_215459/NYCNOC_20210718_220157.wav"
-
 # load the token
 load('../../../t_a_a/OneDrive - UKCEH/bat2inat/token.rdata')
 
