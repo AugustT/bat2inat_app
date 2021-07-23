@@ -14,7 +14,7 @@ library(reticulate)
 post <- FALSE
 
 # load the token
-load('../../../t_a_a/OneDrive - UKCEH/bat2inat/token.rdata')
+load('token.rdata')
 
 # Import pyinaturalist
 pynat <- import('pyinaturalist')
