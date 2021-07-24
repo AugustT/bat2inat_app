@@ -10,8 +10,19 @@ library(shiny)
 library(bat2inat)
 library(shinythemes)
 library(reticulate)
+library(OpenStreetMap)
+library(ggplot2)
 
+# 10MB max size
+options(shiny.maxRequestSize = 10 * 1024^2)
+
+# Set FALSE for testing
 post <- FALSE
+
+# Create the folder where we will put figures
+# This folder is deleted when the session ends
+figDir <- file.path('www', basename(tempfile()))
+dir.create(figDir)
 
 # load the token
 load('token.rdata')
@@ -37,7 +48,8 @@ ui <- fluidPage(
         sidebarPanel(
             fileInput(inputId = 'files',
                       multiple = TRUE, 
-                      label = 'Choose a file')
+                      label = 'Choose files (max 10MB each)',
+                      accept = 'audio/*')
         ),
 
         # Show a plot of the generated distribution
@@ -48,7 +60,7 @@ ui <- fluidPage(
 )
 
 # Define server logic 
-server <- function(input, output) {
+server <- function(input, output, session) {
 
     vals <- reactiveValues(upload_token = NULL)
     
@@ -80,7 +92,7 @@ server <- function(input, output) {
                                    token[[3]],
                                    token[[4]])
         }, silent = TRUE)
-        print(upload_token)
+
         if(length(upload_token) == 1 &
             class(upload_token) == 'character'){
             removeModal()
@@ -88,8 +100,13 @@ server <- function(input, output) {
             showModal(loginModal(failed = TRUE))
         }
     })
+
+    # Delete the figure folder on session close    
+    session$onSessionEnded(function() {
+        unlink(x = figDir, recursive = TRUE)
+    })
     
-    observe({
+    observeEvent(input$files, {
         
         files <- input$files
         str(files)
@@ -98,197 +115,268 @@ server <- function(input, output) {
         if(!is.null(files)){    
         
             for(i in 1:nrow(files)){
-            
-            name <- files$name[i]
-            print(name)
-            file <- files$datapath[i]
-            print(file)
-            
-            withProgress(message = paste('Processing', name), value = 0, {
-                
-                # get metadata
-                incProgress(0.2, detail = paste("Extracting metadata"))
-                md <- call_metadata(file, verbose = FALSE)
-                print(md)
-                
-                if(is.null(md)){
+                local({
                     
-                    print('no metadata')
-                    incProgress(1, detail = paste("No metadata"))
-                    insertUI(
-                        selector = "#console",
-                        where = "afterEnd",
-                        ui = div(h3(name),
-                                 span('Skipped - No metadata'),
-                                 style = "border-radius: 25px;
+                    name <- sub(pattern = "(.*)\\..*$", replacement = "\\1", files$name[i])
+                    # print(name)
+                    file <- files$datapath[i]
+                    # print(file)
+                    
+                    withProgress(message = paste('Processing', name), value = 0, {
+                        
+                        # get metadata
+                        incProgress(0.2, detail = paste("Extracting metadata"))
+                        md <- call_metadata(file, verbose = FALSE)
+                        # print(md)
+                        
+                        if(is.null(md)){
+                            
+                            # print('no metadata')
+                            incProgress(1, detail = paste("No metadata"))
+                            insertUI(
+                                selector = "#console",
+                                where = "afterEnd",
+                                ui = div(h3(name),
+                                         span('Skipped - No metadata'),
+                                         style = "border-radius: 25px;
                                           border: 2px solid rgba(255, 102, 0, 0.8);
                                           padding: 0px 20px 20px 20px;
                                           margin: 10px;"), 
-                        immediate = TRUE
-                    )
-                    next
-                    
-                } else {
-                    
-                    # check against log
-                    log_check <- log[log$sp == md$sp &
-                                     log$lat == md$lat &
-                                     log$long == md$long &
-                                     log$date == md$date, ]
-                    
-                    if(nrow(log_check) > 0){
-                        
-                        print('duplicate in log')
-                        incProgress(1, detail = paste("Duplicate in this batch - skipping"))
-                        insertUI(
-                            selector = "#console",
-                            where = "afterEnd",
-                            ui = div(h3(name),
-                                     span('Skipped - Duplicate in batch'),
-                                     style = "border: 2px solid rgba(255, 183, 0, 0.8);
+                                immediate = TRUE
+                            )
+                            next
+                            
+                        } else {
+                            
+                            # Get species image
+                            image_url <- pynat$get_taxa(md$sp)$results[[1]]$default_photo$square_url
+                            
+                            # create map
+                            buf <- 0.005
+                            suppressWarnings({
+                                mp <- openmap(c(md$lat + (buf*0.7), md$long - buf),
+                                              c(md$lat - (buf*0.7), md$long + buf),
+                                              zoom = 15,
+                                              type = 'osm')
+                            })
+                            
+                            mapFile <- file.path(figDir, paste0(name, 'map.png'))
+                            print(mapFile)
+                            png(filename = mapFile,
+                                width = floor(150 / (mp$tiles[[1]]$xres/mp$tiles[[1]]$yres)),
+                                height = 150, units = 'px')
+                                
+                                op <- par(mar = rep(0, 4))
+                                plot(mp)
+                                par(op)
+                            dev.off()
+                                
+                            # check against log
+                            log_check <- log[log$sp == md$sp &
+                                                 log$lat == md$lat &
+                                                 log$long == md$long &
+                                                 log$date == md$date, ]
+                            
+                            if(nrow(log_check) > 0){
+                                
+                                # print('duplicate in log')
+                                incProgress(1, detail = paste("Duplicate in this batch - skipping"))
+                                insertUI(
+                                    selector = "#console",
+                                    where = "afterEnd",
+                                    ui = div(h3(name),
+                                             span('Skipped - Duplicate in batch'),
+                                             style = "border: 2px solid rgba(255, 183, 0, 0.8);
                                               border-radius: 25px;
                                               padding: 0px 20px 20px 20px;
                                               margin: 10px;"), 
-                            immediate = TRUE
-                        )
-                        next
+                                    immediate = TRUE
+                                )
+                                next
+                                
+                            }
+                            
+                        } 
                         
-                    }
-                    
-                } 
-                
-                # Check we don't have a duplicate observation already
-                incProgress(0.2, detail = paste("Searching for duplicates online"))
-                print('is_duplicate')
-                print(md)
-                print(token$username)
-                dupe <- is_duplicate(md = md,
-                                     radius = 10,
-                                     username = token$username,
-                                     verbose = FALSE)
-                print('HERE')
-
-                if(dupe){
-                    
-                    print('duplicate online')
-                    incProgress(1, detail = paste("Duplicate online"))
-                    insertUI(
-                        selector = "#console",
-                        where = "afterEnd",
-                        ui = div(h3(name),
-                                 span('Skipped - Duplicate online'),
-                                 style = "border: 2px solid rgba(255, 183, 0, 0.8);
+                        # Check we don't have a duplicate observation already
+                        incProgress(0.2, detail = paste("Searching for duplicates online"))
+                        # print('is_duplicate')
+                        # print(md)
+                        # print(token$username)
+                        dupe <- is_duplicate(md = md,
+                                             radius = 10,
+                                             username = token$username,
+                                             verbose = FALSE)
+                        # print('HERE')
+                        
+                        if(dupe){
+                            
+                            # print('duplicate online')
+                            incProgress(1, detail = paste("Duplicate online"))
+                            insertUI(
+                                selector = "#console",
+                                where = "afterEnd",
+                                ui = div(h3(name),
+                                         span('Skipped - Duplicate online'),
+                                         style = "border: 2px solid rgba(255, 183, 0, 0.8);
                                           border-radius: 25px;
                                           padding: 0px 20px 20px 20px;
                                           margin: 10px;"), 
-                        immediate = TRUE
-                    )
-                    next
-
-                }
-                
-                # filter calls
-                incProgress(0.1, detail = paste("Locating calls in sequence"))
-                print('filter')
-                TD <- filter_calls(file, verbose = FALSE)
-                
-                # create spectrogram
-                incProgress(0.1, detail = paste("Creating spectrograms"))
-                print('spectrograms')
-                png <- write_spectro(file, TD, samp_freq = md$sampling,
-                                     verbose = FALSE)
-                
-                # browseURL(dirname(TD$filtered_calls_image))
-                
-                # load token
-                incProgress(0.2, detail = paste("Uploading observation data"))
-                print('uploading')
-                
-                
-                if(is.null(TD$freq_peak)){
-                    
-                    desc <- paste('Recorded on', md$model, md$firmware, '\n',
-                                  'Call parameters could not automatically be extracted\n',
-                                  'Recorder settings\n',
-                                  md$settings)
-                    
-                } else {
-                    
-                    desc <- paste('Recorded on', md$model, md$firmware, '\n',
-                                  'Number of calls in sequence:', length(TD$freq_peak), '\n',
-                                  'Peak frequencies (kHz):', paste(round(TD$freq_peak/1000), collapse = ', '), '\n',
-                                  'Max frequencies (kHz):', paste(round(TD$freq_max/1000), collapse = ', '), '\n',
-                                  'Min frequencies (kHz):', paste(round(TD$freq_min/1000), collapse = ', '), '\n',
-                                  'Call durations (ms):', paste(round(TD$call_duration, digits = 1), collapse = ', '), '\n',
-                                  'Recorder settings\n',
-                                  md$settings)
-                    
-                }
-                
-                # Set up observation fields
-                of <- list('567' = paste(md$model, md$firmware), #model
-                           '4936' = md$sampling/1000,
-                           '12583' = md$time)
-                
-                # Add average frequency if its there
-                if(!is.null(TD$freq_peak)){
-                    
-                    of <- c(of, '308' = round(mean(TD$freq_peak/1000)))
-                    
-                }
-                
-                if(post){
-                    
-                    resp <- pynat$create_observation(
-                        species_guess = md$sp,
-                        observed_on = paste(md$date, md$time),
-                        description = desc,
-                        latitude = md$lat, 
-                        longitude = md$long,
-                        photos = png,
-                        sounds = file,
-                        access_token = upload_token,
-                        observation_fields = of
-                    )
-                    
-                    log <- rbind(log, 
-                                 data.frame(sp = resp$md$sp,
-                                            lat = resp$md$lat,
-                                            long = resp$md$long,
-                                            date = resp$md$date))
-                    
-                    incProgress(1, detail = paste("Uploaded"))
-                    insertUI(
-                        selector = "#console",
-                        where = "afterEnd",
-                        ui = div(h3(name),
-                                 span('Success - Observation uploaded'),
-                                 style = "border: 2px solid rgba(0, 255, 166, 0.4);
+                                immediate = TRUE
+                            )
+                            next
+                            
+                        }
+                        
+                        # filter calls
+                        incProgress(0.1, detail = paste("Locating calls in sequence"))
+                        # print('filter')
+                        TD <- filter_calls(file, verbose = FALSE)
+                        
+                        # create spectrogram
+                        incProgress(0.1, detail = paste("Creating spectrograms"))
+                        # print('spectrograms')
+                        pngs <- write_spectro(file, TD,
+                                              samp_freq = md$sampling,
+                                              tempDir = figDir,
+                                              verbose = FALSE)
+                        # print(pngs[1])
+                        
+                        
+                        # load token
+                        incProgress(0.2, detail = paste("Uploading observation data"))
+                        # print('uploading')
+                        
+                        
+                        if(is.null(TD$freq_peak)){
+                            
+                            desc <- paste('Recorded on', md$model, md$firmware, '\n',
+                                          'Call parameters could not automatically be extracted\n',
+                                          'Recorder settings\n',
+                                          md$settings)
+                            
+                        } else {
+                            
+                            desc <- paste('Recorded on', md$model, md$firmware, '\n',
+                                          'Number of calls in sequence:', length(TD$freq_peak), '\n',
+                                          'Peak frequencies (kHz):', paste(round(TD$freq_peak/1000), collapse = ', '), '\n',
+                                          'Max frequencies (kHz):', paste(round(TD$freq_max/1000), collapse = ', '), '\n',
+                                          'Min frequencies (kHz):', paste(round(TD$freq_min/1000), collapse = ', '), '\n',
+                                          'Call durations (ms):', paste(round(TD$call_duration, digits = 1), collapse = ', '), '\n',
+                                          'Recorder settings\n',
+                                          md$settings)
+                            
+                        }
+                        
+                        # Set up observation fields
+                        of <- list('567' = paste(md$model, md$firmware), #model
+                                   '4936' = md$sampling/1000,
+                                   '12583' = md$time)
+                        
+                        # Add average frequency if its there
+                        if(!is.null(TD$freq_peak)){
+                            
+                            of <- c(of, '308' = round(mean(TD$freq_peak/1000)))
+                            
+                        }
+                        
+                        ## Posting the data ##
+                        if(post){
+                            
+                            resp <- pynat$create_observation(
+                                species_guess = md$sp,
+                                observed_on = paste(md$date, md$time),
+                                description = desc,
+                                latitude = md$lat, 
+                                longitude = md$long,
+                                photos = pngs,
+                                sounds = file,
+                                access_token = upload_token,
+                                observation_fields = of
+                            )
+                            
+                            log <- rbind(log, 
+                                         data.frame(sp = resp$md$sp,
+                                                    lat = resp$md$lat,
+                                                    long = resp$md$long,
+                                                    date = resp$md$date))
+                            
+                            incProgress(1, detail = paste("Uploaded"))
+                            insertUI(
+                                selector = "#console",
+                                where = "afterEnd",
+                                ui = div(h3(name),
+                                         div(id = 'sp',
+                                             img(src = image_url, height = '150px'),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         div(id = 'metadata',
+                                             span(strong('Species: '), em(md$sp)), br(),
+                                             span(strong('Date & time: '), paste(md$date,md$time)), br(),
+                                             span(strong('Number of calls: '), length(TD$freq_peak)), br(),
+                                             span(strong('Av. Peak Frequency (kHz):'), round(median(TD$freq_peak)/1000)), br(),
+                                             span(strong('Av. Call Duration (ms):'), round(median(TD$call_duration), digits = 1)),
+                                             style = 'float: left; padding-right: 20px; font-size: large;'),
+                                         div(id = 'spectros',
+                                             imageOutput(paste0(name, 'spectro'), height = '150px'),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         div(id = 'maps',
+                                             plotOutput(paste0(name, 'map'), height = '150px'),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         div(id = 'link',
+                                             actionButton(inputId = paste0(name, 'link'),
+                                                          label = "View on iNat", 
+                                                          onclick = paste0("window.open('https://www.inaturalist.org/observations/",
+                                                                           resp, "', '_blank')")),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         style = "border: 2px solid rgba(0, 255, 166, 0.4);
                                           border-radius: 25px;
                                           padding: 0px 20px 20px 20px;
                                           margin: 10px;"), 
-                        immediate = TRUE
-                    )
-                    
-                    
-                } else {
-                    
-                    incProgress(1, detail = paste("Skipped"))
-                    insertUI(
-                        selector = "#console",
-                        where = "afterEnd",
-                        ui = div(h3(name),
-                                 span('Success - Upload disabled'),
-                                 style = "border: 2px solid rgba(0, 255, 166, 0.4);
+                                immediate = TRUE
+                            )
+                            
+                            
+                        } else {
+                            
+                            incProgress(1, detail = paste("Skipped"))
+                            insertUI(
+                                selector = "#console",
+                                where = "afterEnd",
+                                ui = div(h3(name),
+                                         div(id = 'sp',
+                                             img(src = image_url, height = '150px'),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         div(id = 'metadata',
+                                             span(strong('Species: '), em(md$sp)), br(),
+                                             span(strong('Date & time: '), paste(md$date,md$time)), br(),
+                                             span(strong('Number of calls: '), length(TD$freq_peak)), br(),
+                                             span(strong('Av. Peak Frequency (kHz):'), ifelse(!is.null(TD$freq_peak),
+                                                                                              round(median(TD$freq_peak)/1000),
+                                                                                              'NA')), br(),
+                                             span(strong('Av. Call Duration (ms):'), ifelse(!is.null(TD$freq_peak),
+                                                                                            round(median(TD$call_duration), digits = 1),
+                                                                                            'NA')),
+                                             style = 'float: left; padding-right: 20px; font-size: large;'),
+                                         div(id = paste0(name, 'spectro'),
+                                             # imageOutput(paste0(name, 'spectro'), height = '150px'),
+                                             img(src = gsub('^www/', '', pngs[1]), height = '150px'),
+                                             style = 'float: left; padding-right: 20px;'),
+                                         div(id = paste0(name, 'map'),
+                                             img(src = gsub('^www/', '', mapFile), height = '150px'),
+                                             # plotOutput(paste0(name, 'map'), height = '150px'),
+                                             style = 'padding-right: 20px;'),
+                                         style = "border: 2px solid rgba(0, 255, 166, 0.4);
                                           border-radius: 25px;
                                           padding: 0px 20px 20px 20px;
                                           margin: 10px;"),
-                        immediate = TRUE
-                    )
-                    
-                }
-            })
-        }
+                                immediate = TRUE
+                            )
+                            
+                        }
+                    })
+                })
+            }
+            
             
         }
     })
