@@ -6,10 +6,23 @@
 #
 #    http://shiny.rstudio.com/
 #
+# devtools::install_github(repo = 'augustt/bat2inat', ref = 'main')
+library(reticulate)
+if(Sys.info()['user'] != 't_a_a'){
+    reticulate::virtualenv_create(envname = 'python3_env', 
+                                  python = '/usr/bin/python3')
+    reticulate::virtualenv_install('python3_env', 
+                                   packages = c('pyinaturalist'))
+    reticulate::use_virtualenv("python3_env", required = TRUE)
+}
+# Create a virtual environment selecting your desired python version
+
+# Import pyinaturalist
+pynat <- reticulate::import('pyinaturalist')
+
 library(shiny)
 library(bat2inat)
 library(shinythemes)
-library(reticulate)
 library(OpenStreetMap)
 library(ggplot2)
 
@@ -22,13 +35,12 @@ post <- TRUE
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
 figDir <- file.path('www', basename(tempfile()))
-dir.create(figDir)
+dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
 
-# Import pyinaturalist
-pynat <- import('pyinaturalist')
+
 
 # Define UI 
 ui <- fluidPage(
