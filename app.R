@@ -380,7 +380,7 @@ server <- function(input, output, session) {
                                      div(id = paste0(name, 'map'),
                                          img(src = gsub('^www/', '', mapFile), height = '150px'),
                                          # plotOutput(paste0(name, 'map'), height = '150px'),
-                                         style = 'padding-right: 20px;'),
+                                         style = 'padding-right: 20px; float: left;'),
                                      div(style = "clear: both;"),
                                      style = "border: 2px solid rgba(0, 255, 166, 0.4);
                                       border-radius: 25px;
