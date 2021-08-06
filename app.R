@@ -17,12 +17,12 @@ library(ggplot2)
 options(shiny.maxRequestSize = 10 * 1024^2)
 
 # Set FALSE for testing
-post <- TRUE
+post <- FALSE
 
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
 figDir <- file.path('www', basename(tempfile()))
-dir.create(figDir)
+dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
