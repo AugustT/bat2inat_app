@@ -39,7 +39,7 @@ library(av)
 options(shiny.maxRequestSize = 10 * 1024^2)
 
 # Set FALSE for testing
-post <- TRUE
+post <- FALSE
 
 radius <- 15
 
@@ -422,6 +422,7 @@ server <- function(input, output, session) {
                                          img(src = gsub('^www/', '', mapFile), height = '150px'),
                                          # plotOutput(paste0(name, 'map'), height = '150px'),
                                          style = 'float: left; padding-right: 20px;'),
+
                                      div(style = "clear: both;"),
                                      style = "border: 2px solid rgba(0, 255, 166, 0.4);
                                       border-radius: 25px;
