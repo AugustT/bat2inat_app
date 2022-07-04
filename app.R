@@ -6,8 +6,7 @@
 #
 #    http://shiny.rstudio.com/
 #
-<<<<<<< HEAD
-devtools::install_github('Augustt/bat2inat')
+# devtools::install_github('Augustt/bat2inat')
 require(shiny)
 require(bat2inat)
 require(shinythemes)
@@ -24,13 +23,15 @@ require(reticulate)
 ## Limit the number of upload files (if not me)
 
 
-if(Sys.info()['user'] != 't_a_a'){
+if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
     reticulate::virtualenv_create(envname = 'python3_env', 
                                   python = '/usr/bin/python3')
     reticulate::virtualenv_install('python3_env', 
                                    packages = c('pyinaturalist'))
     reticulate::use_virtualenv("python3_env", required = TRUE)
 }
+
+
 # Create a virtual environment selecting your desired python version
 
 # Import pyinaturalist
