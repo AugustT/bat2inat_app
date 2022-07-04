@@ -7,6 +7,12 @@
 #    http://shiny.rstudio.com/
 #
 # devtools::install_github(repo = 'augustt/bat2inat', ref = 'main')
+
+## Fix deploy, module pyinaturalist not found
+## Add observation to project feature functionality
+## Modal asking if manual ID has been done
+## Limit the number of upload files (if not me)
+
 library(reticulate)
 if(Sys.info()['user'] != 't_a_a'){
     reticulate::virtualenv_create(envname = 'python3_env', 
@@ -20,17 +26,22 @@ if(Sys.info()['user'] != 't_a_a'){
 # Import pyinaturalist
 pynat <- reticulate::import('pyinaturalist')
 
+library(geosphere)
 library(shiny)
 library(bat2inat)
 library(shinythemes)
 library(OpenStreetMap)
 library(ggplot2)
+library(bioacoustics)
+library(av)
 
 # 10MB max size
 options(shiny.maxRequestSize = 10 * 1024^2)
 
 # Set FALSE for testing
 post <- TRUE
+
+radius <- 15
 
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
@@ -135,8 +146,9 @@ server <- function(input, output, session) {
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- call_metadata(file, verbose = FALSE)
-                    # print(md)
+                    md <- bat2inat::call_metadata(file, name = name, verbose = FALSE)
+                    # print('HERE')
+                    print(md)
                     
                     if(is.null(md)){
                         
@@ -146,7 +158,7 @@ server <- function(input, output, session) {
                             selector = "#console",
                             where = "afterEnd",
                             ui = div(h3(name),
-                                     span('Skipped - No metadata'),
+                                     shiny::span('Skipped - No metadata'),
                                      style = "border-radius: 25px;
                                       border: 2px solid rgba(255, 102, 0, 0.8);
                                       padding: 0px 20px 20px 20px;
@@ -186,30 +198,47 @@ server <- function(input, output, session) {
                         # print(vals$log)
                         
                         log_check <- vals$log[vals$log$sp == md$sp &
-                                              vals$log$lat == md$lat &
-                                              vals$log$long == md$long &
+                                              # vals$log$lat == md$lat &
+                                              # vals$log$long == md$long &
                                               vals$log$date == md$date, ]
                         
                         if(nrow(log_check) > 0){
                             
-                            # print('duplicate in log')
-                            incProgress(0.8 * (1/nrow(files)), detail = paste('File', i, "- Duplicate in this batch - skipping"))
-                            insertUI(
-                                selector = "#console",
-                                where = "afterEnd",
-                                ui = div(h3(name),
-                                         span('Skipped - Duplicate in batch'),
-                                         style = "border: 2px solid rgba(255, 183, 0, 0.8);
+                            dists <- NULL
+                            
+                            # Measure distances
+                            for(iL in 1:nrow(log_check)){
+                                
+                                dists <- c(dists,
+                                           distm(c(md$long, md$lat),
+                                                 c(log_check$long[iL], log_check$lat[iL]),
+                                                 fun = distHaversine))
+                            }
+                            
+                            if(any(dists < radius)){
+                                
+                                incProgress(0.8 * (1/nrow(files)), 
+                                            detail = paste('File', i, 
+                                                           'Duplicate in this batch',
+                                                           paste0('(', round(min(dists)), 'm)'),
+                                                           '- skipping'))
+                                insertUI(
+                                    selector = "#console",
+                                    where = "afterEnd",
+                                    ui = div(h3(name),
+                                             shiny::span('Skipped - Duplicate in batch',
+                                                  paste0('(', round(min(dists)), 'm)')),
+                                             style = "border: 2px solid rgba(255, 183, 0, 0.8);
                                           border-radius: 25px;
                                           padding: 0px 20px 20px 20px;
                                           margin: 10px;
                                           width: fit-content;"), 
-                                immediate = TRUE
-                            )
-                            next
-                            
+                                    immediate = TRUE
+                                )
+                                next
+                                
+                            }
                         }
-                        
                     } 
                     
                     # Check we don't have a duplicate observation already
@@ -218,9 +247,9 @@ server <- function(input, output, session) {
                     # print(md)
                     # print(token$username)
                     dupe <- is_duplicate(md = md,
-                                         radius = 10,
+                                         radius = radius,
                                          username = token$username,
-                                         verbose = FALSE)
+                                         verbose = TRUE)
                     # print('HERE')
                     
                     if(dupe){
@@ -231,7 +260,7 @@ server <- function(input, output, session) {
                             selector = "#console",
                             where = "afterEnd",
                             ui = div(h3(name),
-                                     span('Skipped - Duplicate online'),
+                                     shiny::span('Skipped - Duplicate online'),
                                      style = "border: 2px solid rgba(255, 183, 0, 0.8);
                                       border-radius: 25px;
                                       padding: 0px 20px 20px 20px;
@@ -273,11 +302,11 @@ server <- function(input, output, session) {
                     } else {
                         
                         desc <- paste('Recorded on', md$model, md$firmware, '\n',
-                                      'Number of calls in sequence:', length(TD$freq_peak), '\n',
-                                      'Peak frequencies (kHz):', paste(round(TD$freq_peak/1000), collapse = ', '), '\n',
-                                      'Max frequencies (kHz):', paste(round(TD$freq_max/1000), collapse = ', '), '\n',
-                                      'Min frequencies (kHz):', paste(round(TD$freq_min/1000), collapse = ', '), '\n',
-                                      'Call durations (ms):', paste(round(TD$call_duration, digits = 1), collapse = ', '), '\n',
+                                      'Number of good quality calls:', length(TD$freq_peak), '\n',
+                                      'Av. peak frequency (kHz):', round(median(TD$freq_peak/1000)), '\n',
+                                      'Av. max frequency (kHz):', round(median(TD$freq_max/1000)), '\n',
+                                      'Av. min frequency (kHz):', round(median(TD$freq_min/1000)), '\n',
+                                      'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
                                       md$settings)
                         
@@ -291,7 +320,7 @@ server <- function(input, output, session) {
                     # Add average frequency if its there
                     if(!is.null(TD$freq_peak)){
                         
-                        of <- c(of, '308' = round(mean(TD$freq_peak/1000)))
+                        of <- c(of, '308' = round(median(TD$freq_peak/1000)))
                         
                     }
                     
@@ -328,13 +357,13 @@ server <- function(input, output, session) {
                                          img(src = image_url, height = '150px'),
                                          style = 'float: left; padding-right: 20px;'),
                                      div(id = 'metadata',
-                                         span(strong('Species: '), em(md$sp)), br(),
-                                         span(strong('Date & time: '), paste(md$date,md$time)), br(),
-                                         span(strong('Number of good quality calls: '), length(TD$freq_peak)), br(),
-                                         span(strong('Av. Peak Frequency (kHz):'), ifelse(!is.null(TD$freq_peak),
+                                         shiny::span(strong('Species: '), em(md$sp)), br(),
+                                         shiny::span(strong('Date & time: '), paste(md$date,md$time)), br(),
+                                         shiny::span(strong('Number of good quality calls: '), length(TD$freq_peak)), br(),
+                                         shiny::span(strong('Av. Peak Frequency (kHz):'), ifelse(!is.null(TD$freq_peak),
                                                                                           round(median(TD$freq_peak)/1000),
                                                                                           'NA')), br(),
-                                         span(strong('Av. Call Duration (ms):'), ifelse(!is.null(TD$freq_peak),
+                                         shiny::span(strong('Av. Call Duration (ms):'), ifelse(!is.null(TD$freq_peak),
                                                                                         round(median(TD$call_duration), digits = 1),
                                                                                         'NA')),
                                          style = 'float: left; padding-right: 20px; font-size: large;'),
@@ -375,13 +404,13 @@ server <- function(input, output, session) {
                                          img(src = image_url, height = '150px'),
                                          style = 'float: left; padding-right: 20px;'),
                                      div(id = 'metadata',
-                                         span(strong('Species: '), em(md$sp)), br(),
-                                         span(strong('Date & time: '), paste(md$date,md$time)), br(),
-                                         span(strong('Number of good quality calls: '), length(TD$freq_peak)), br(),
-                                         span(strong('Av. Peak Frequency (kHz):'), ifelse(!is.null(TD$freq_peak),
+                                         shiny::span(strong('Species: '), em(md$sp)), br(),
+                                         shiny::span(strong('Date & time: '), paste(md$date,md$time)), br(),
+                                         shiny::span(strong('Number of good quality calls: '), length(TD$freq_peak)), br(),
+                                         shiny::span(strong('Av. Peak Frequency (kHz):'), ifelse(!is.null(TD$freq_peak),
                                                                                           round(median(TD$freq_peak)/1000),
                                                                                           'NA')), br(),
-                                         span(strong('Av. Call Duration (ms):'), ifelse(!is.null(TD$freq_peak),
+                                         shiny::span(strong('Av. Call Duration (ms):'), ifelse(!is.null(TD$freq_peak),
                                                                                         round(median(TD$call_duration), digits = 1),
                                                                                         'NA')),
                                          style = 'float: left; padding-right: 20px; font-size: large;'),
@@ -392,7 +421,7 @@ server <- function(input, output, session) {
                                      div(id = paste0(name, 'map'),
                                          img(src = gsub('^www/', '', mapFile), height = '150px'),
                                          # plotOutput(paste0(name, 'map'), height = '150px'),
-                                         style = 'padding-right: 20px;'),
+                                         style = 'float: left; padding-right: 20px;'),
                                      div(style = "clear: both;"),
                                      style = "border: 2px solid rgba(0, 255, 166, 0.4);
                                       border-radius: 25px;
@@ -401,6 +430,11 @@ server <- function(input, output, session) {
                                       width: fit-content;"),
                             immediate = TRUE
                         )
+                        vals$log <- rbind(vals$log, 
+                                          data.frame(sp = md$sp,
+                                                     lat = md$lat,
+                                                     long = md$long,
+                                                     date = md$date))
                         }
                     }
                 })
