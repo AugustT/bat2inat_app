@@ -6,18 +6,21 @@
 #
 #    http://shiny.rstudio.com/
 #
-library(shiny)
-library(bat2inat)
-library(shinythemes)
-library(reticulate)
-library(OpenStreetMap)
-library(ggplot2)
+devtools::install_github('Augustt/bat2inat')
+require(shiny)
+require(bat2inat)
+require(shinythemes)
+require(reticulate)
+require(OpenStreetMap)
+require(ggplot2)
+require(bioacoustics)
+require(av)
 
 # 10MB max size
 options(shiny.maxRequestSize = 10 * 1024^2)
 
 # Set FALSE for testing
-post <- FALSE
+post <- TRUE
 
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
