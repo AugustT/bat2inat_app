@@ -284,7 +284,9 @@ server <- function(input, output, session) {
                     # filter calls
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Locating calls in sequence"))
                     # print('filter')
-                    TD <- filter_calls(file, plot = FALSE, verbose = FALSE)
+                    TD <- filter_calls(file,
+                                       plot = FALSE, 
+                                       verbose = FALSE)
                     
                     # create spectrogram
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Creating spectrograms"))
@@ -299,7 +301,8 @@ server <- function(input, output, session) {
                     # load token
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Uploading observation data"))
                     # print('uploading')
-                    
+                    # print(TD)
+                    # print(md)
                     
                     if(is.null(TD$freq_peak)){
                         
@@ -307,6 +310,7 @@ server <- function(input, output, session) {
                                       'Call parameters could not automatically be extracted\n',
                                       'Recorder settings\n',
                                       md$settings)
+                        cat('description created\n')
                         
                     } else {
                         
@@ -318,6 +322,8 @@ server <- function(input, output, session) {
                                       'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
                                       md$settings)
+                        
+                        cat('description created\n')
                         
                     }
                     
@@ -336,6 +342,7 @@ server <- function(input, output, session) {
                     ## Posting the data ##
                     if(post){
                         
+                        cat('Posting data...')
                         resp <- pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
@@ -347,6 +354,7 @@ server <- function(input, output, session) {
                             access_token = vals$upload_token,
                             observation_fields = of
                         )
+                        cat('Done')
                         
                         # str(resp)
                         vals$log <- rbind(vals$log, 
