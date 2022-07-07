@@ -1,4 +1,3 @@
-#
 # This is a Shiny web application. You can run the application by clicking
 # the 'Run App' button above.
 #
@@ -15,7 +14,8 @@ require(OpenStreetMap)
 require(ggplot2)
 require(bioacoustics)
 require(av)
-require(reticulate)
+require(geosphere)
+require(soundgen)
   
 ## Fix deploy, module pyinaturalist not found
 ## Add observation to project feature functionality
@@ -43,7 +43,7 @@ options(shiny.maxRequestSize = 10 * 1024^2)
 # Set FALSE for testing
 post <- TRUE
 
-radius <- 15
+radius <- 30
 
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
@@ -52,8 +52,6 @@ dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
-
-
 
 # Define UI 
 ui <- fluidPage(
@@ -100,7 +98,15 @@ server <- function(input, output, session) {
         )
     }
     
-    showModal(loginModal())
+    if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
+      showModal(loginModal())
+    } else {
+      load('pwd.rdata')
+      vals$upload_token <-  pynat$get_access_token(pwd$username,
+                                                   pwd$pwd,
+                                                   token[[3]],
+                                                   token[[4]])
+    }
     
     observeEvent(input$login, {
         
@@ -142,13 +148,14 @@ server <- function(input, output, session) {
                 for(i in 1:nrow(files)){
                     
                     name <- sub(pattern = "(.*)\\..*$", replacement = "\\1", files$name[i])
-                    # print(name)
-                    file <- files$datapath[i]
-                    # print(file)
+                    print(paste('File name:', name))
+                    file <- normalizePath(files$datapath[i])
+                    print(paste('File path:', file))
+                    print(paste('Exists?', file.exists(file)))
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- bat2inat::call_metadata(file, name = name, verbose = FALSE)
+                    md <- bat2inat::call_metadata(file, name = name, verbose = TRUE)
                     # print('HERE')
                     print(md)
                     
@@ -277,7 +284,7 @@ server <- function(input, output, session) {
                     # filter calls
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Locating calls in sequence"))
                     # print('filter')
-                    TD <- filter_calls(file, verbose = FALSE)
+                    TD <- filter_calls(file, plot = FALSE, verbose = FALSE)
                     
                     # create spectrogram
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Creating spectrograms"))
