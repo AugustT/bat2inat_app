@@ -155,7 +155,7 @@ server <- function(input, output, session) {
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- bat2inat::call_metadata(file, name = name, verbose = TRUE)
+                    md <- bat2inat::call_metadata(file, name = name, verbose = FALSE)
                     # print('HERE')
                     print(md)
                     
@@ -258,9 +258,8 @@ server <- function(input, output, session) {
                     dupe <- is_duplicate(md = md,
                                          radius = radius,
                                          username = token$username,
-                                         verbose = TRUE)
-                    # print('HERE')
-                    
+                                         verbose = FALSE)
+
                     if(dupe){
                         
                         # print('duplicate online')
@@ -295,14 +294,10 @@ server <- function(input, output, session) {
                                           samp_freq = md$sampling,
                                           tempDir = figDir,
                                           verbose = FALSE)
-                    # print(pngs[1])
-                    
-                    
+
                     # load token
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Uploading observation data"))
-                    # print('uploading')
-                    # print(TD)
-                    # print(md)
+
                     
                     if(is.null(TD$freq_peak)){
                         
@@ -356,14 +351,13 @@ server <- function(input, output, session) {
                         )
                         cat('Done')
                         
-                        # str(resp)
                         vals$log <- rbind(vals$log, 
                                           data.frame(sp = md$sp,
                                                      lat = md$lat,
                                                      long = md$long,
                                                      date = md$date))
-                        # print(resp[[1]])
-                        # print(vals$log)
+                        
+                        if(length(resp) == 1) resp <- resp[[1]]
                         
                         incProgress(0.2 * (1/nrow(files)), detail = paste("Uploaded"))
                         insertUI(
@@ -396,7 +390,7 @@ server <- function(input, output, session) {
                                          actionButton(inputId = paste0(name, 'link'),
                                                       label = "View on iNat", 
                                                       onclick = paste0("window.open('https://www.inaturalist.org/observations/",
-                                                                       resp[[1]]$id,
+                                                                       resp$id,
                                                                        "',
                                                                        '_blank')")),
                                          style = 'float: left; padding-right: 20px;'),
