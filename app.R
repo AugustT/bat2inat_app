@@ -1,4 +1,3 @@
-#
 # This is a Shiny web application. You can run the application by clicking
 # the 'Run App' button above.
 #
@@ -6,34 +5,37 @@
 #
 #    http://shiny.rstudio.com/
 #
-# devtools::install_github(repo = 'augustt/bat2inat', ref = 'main')
-
+# devtools::install_github('Augustt/bat2inat')
+require(shiny)
+require(bat2inat)
+require(shinythemes)
+require(reticulate)
+require(OpenStreetMap)
+require(ggplot2)
+require(bioacoustics)
+require(av)
+require(geosphere)
+require(soundgen)
+  
 ## Fix deploy, module pyinaturalist not found
 ## Add observation to project feature functionality
 ## Modal asking if manual ID has been done
 ## Limit the number of upload files (if not me)
 
-library(reticulate)
-if(Sys.info()['user'] != 't_a_a'){
+
+if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
     reticulate::virtualenv_create(envname = 'python3_env', 
                                   python = '/usr/bin/python3')
     reticulate::virtualenv_install('python3_env', 
                                    packages = c('pyinaturalist'))
     reticulate::use_virtualenv("python3_env", required = TRUE)
 }
+
+
 # Create a virtual environment selecting your desired python version
 
 # Import pyinaturalist
 pynat <- reticulate::import('pyinaturalist')
-
-library(geosphere)
-library(shiny)
-library(bat2inat)
-library(shinythemes)
-library(OpenStreetMap)
-library(ggplot2)
-library(bioacoustics)
-library(av)
 
 # 10MB max size
 options(shiny.maxRequestSize = 10 * 1024^2)
@@ -41,7 +43,7 @@ options(shiny.maxRequestSize = 10 * 1024^2)
 # Set FALSE for testing
 post <- TRUE
 
-radius <- 15
+radius <- 30
 
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
@@ -50,8 +52,6 @@ dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
-
-
 
 # Define UI 
 ui <- fluidPage(
@@ -98,7 +98,15 @@ server <- function(input, output, session) {
         )
     }
     
-    showModal(loginModal())
+    if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
+      showModal(loginModal())
+    } else {
+      load('pwd.rdata')
+      vals$upload_token <-  pynat$get_access_token(pwd$username,
+                                                   pwd$pwd,
+                                                   token[[3]],
+                                                   token[[4]])
+    }
     
     observeEvent(input$login, {
         
@@ -140,13 +148,14 @@ server <- function(input, output, session) {
                 for(i in 1:nrow(files)){
                     
                     name <- sub(pattern = "(.*)\\..*$", replacement = "\\1", files$name[i])
-                    # print(name)
-                    file <- files$datapath[i]
-                    # print(file)
+                    print(paste('File name:', name))
+                    file <- normalizePath(files$datapath[i])
+                    print(paste('File path:', file))
+                    print(paste('Exists?', file.exists(file)))
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- bat2inat::call_metadata(file, name = name, verbose = FALSE)
+                    md <- bat2inat::call_metadata(file, name = name, verbose = TRUE)
                     # print('HERE')
                     print(md)
                     
@@ -275,7 +284,9 @@ server <- function(input, output, session) {
                     # filter calls
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Locating calls in sequence"))
                     # print('filter')
-                    TD <- filter_calls(file, verbose = FALSE)
+                    TD <- filter_calls(file,
+                                       plot = FALSE, 
+                                       verbose = FALSE)
                     
                     # create spectrogram
                     incProgress(0.1 * (1/nrow(files)), detail = paste('File', i, "- Creating spectrograms"))
@@ -290,7 +301,8 @@ server <- function(input, output, session) {
                     # load token
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Uploading observation data"))
                     # print('uploading')
-                    
+                    # print(TD)
+                    # print(md)
                     
                     if(is.null(TD$freq_peak)){
                         
@@ -298,6 +310,7 @@ server <- function(input, output, session) {
                                       'Call parameters could not automatically be extracted\n',
                                       'Recorder settings\n',
                                       md$settings)
+                        cat('description created\n')
                         
                     } else {
                         
@@ -309,6 +322,8 @@ server <- function(input, output, session) {
                                       'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
                                       md$settings)
+                        
+                        cat('description created\n')
                         
                     }
                     
@@ -327,6 +342,7 @@ server <- function(input, output, session) {
                     ## Posting the data ##
                     if(post){
                         
+                        cat('Posting data...')
                         resp <- pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
@@ -338,6 +354,7 @@ server <- function(input, output, session) {
                             access_token = vals$upload_token,
                             observation_fields = of
                         )
+                        cat('Done')
                         
                         # str(resp)
                         vals$log <- rbind(vals$log, 
