@@ -16,12 +16,12 @@ require(bioacoustics)
 require(av)
 require(geosphere)
 require(soundgen)
+require(googlesheets4)
   
 ## Fix deploy, module pyinaturalist not found
 ## Add observation to project feature functionality
 ## Modal asking if manual ID has been done
 ## Limit the number of upload files (if not me)
-
 
 if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
     reticulate::virtualenv_create(envname = 'python3_env', 
@@ -30,7 +30,6 @@ if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
                                    packages = c('pyinaturalist'))
     reticulate::use_virtualenv("python3_env", required = TRUE)
 }
-
 
 # Create a virtual environment selecting your desired python version
 
@@ -52,6 +51,15 @@ dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
+
+# Setup Google Sheets
+library(googlesheets4)
+
+# Authenticate using token. If no browser opens, the authentication works.
+gs4_auth(cache = "secrets", email = "tomaugust1985@gmail.com")
+
+# load species names
+species_table <- unique(read_sheet(ss = 'https://docs.google.com/spreadsheets/d/1h0oF3Lcxvl2HdnihFiYmHLzLwbfWBB5_Ha47yH-KAqo/edit#gid=0'))
 
 # Define UI 
 ui <- fluidPage(
@@ -89,8 +97,11 @@ server <- function(input, output, session) {
             ),
             passwordInput("password", label = "Password", 
                           placeholder = 'Enter your iNaturalist password'),
-            if (failed)
+            if (failed == 'user_pwd')
                 div(tags$b("Username or password incorrect", style = "color: red;")),
+            
+            if (failed == 'not_allowed')
+              div(tags$b("Your iNaturalist user account is not registered for Bat2iNat", style = "color: red;")),
             
             footer = tagList(
                 actionButton("login", "Login")
@@ -98,34 +109,48 @@ server <- function(input, output, session) {
         )
     }
     
-    if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
+    # If I am using this locally, login me in automatically
+    # if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
       showModal(loginModal())
-    } else {
-      load('pwd.rdata')
-      vals$upload_token <-  pynat$get_access_token(pwd$username,
-                                                   pwd$pwd,
-                                                   token[[3]],
-                                                   token[[4]])
-    }
+    # } else {
+    #   load('pwd.rdata')
+    #   vals$upload_token <-  pynat$get_access_token(pwd$username,
+    #                                                pwd$pwd,
+    #                                                token[[3]],
+    #                                                token[[4]])
+    # }
     
     observeEvent(input$login, {
+      
+        # load permitted users
+        users <- read_sheet(ss = 'https://docs.google.com/spreadsheets/d/1FFVV9-iPQO6gyh-QZT599pImzgVaDU0GPyYTo9YQIiY/edit#gid=0')$users
         
-        # this can be used to test login
-        upload_token <- try({
+        if(input$username %in% users){
+          
+          # this can be used to test login
+          upload_token <- try({
             pynat$get_access_token(input$username,
                                    input$password,
                                    token[[3]],
                                    token[[4]])
-        }, silent = TRUE)
-        
-        vals$upload_token <- upload_token
-
-        if(length(upload_token) == 1 &
-            class(upload_token) == 'character'){
+          }, silent = TRUE)
+          
+          vals$upload_token <- upload_token
+          
+          if(length(upload_token) == 1 &
+             class(upload_token) == 'character'){
             removeModal()
+          } else {
+            showModal(loginModal(failed = 'user_pwd'))
+          }
+          
         } else {
-            showModal(loginModal(failed = TRUE))
+          
+          showModal(loginModal(failed = 'not_allowed'))
+          
         }
+      
+        
     })
 
     # Delete the figure folder on session close    
@@ -155,7 +180,9 @@ server <- function(input, output, session) {
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- bat2inat::call_metadata(file, name = name, verbose = TRUE)
+                    md <- bat2inat::call_metadata(file, name = name,
+                                                  verbose = TRUE,
+                                                  sp_tab = species_table)
                     # print('HERE')
                     print(md)
                     
