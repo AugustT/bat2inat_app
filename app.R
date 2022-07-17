@@ -39,7 +39,7 @@ library(av)
 options(shiny.maxRequestSize = 10 * 1024^2)
 
 # Set FALSE for testing
-post <- FALSE
+post <- TRUE
 
 radius <- 15
 
