@@ -6,7 +6,7 @@
 #    http://shiny.rstudio.com/
 #
 # devtools::install_github('Augustt/bat2inat')
-require(shiny)
+
 require(bat2inat)
 require(shinythemes)
 require(reticulate)
@@ -16,12 +16,13 @@ require(bioacoustics)
 require(av)
 require(geosphere)
 require(soundgen)
+require(googlesheets4)
+require(shiny)
   
 ## Fix deploy, module pyinaturalist not found
 ## Add observation to project feature functionality
 ## Modal asking if manual ID has been done
 ## Limit the number of upload files (if not me)
-
 
 if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
     reticulate::virtualenv_create(envname = 'python3_env', 
@@ -30,7 +31,6 @@ if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
                                    packages = c('pyinaturalist'))
     reticulate::use_virtualenv("python3_env", required = TRUE)
 }
-
 
 # Create a virtual environment selecting your desired python version
 
@@ -52,6 +52,15 @@ dir.create(figDir, recursive = TRUE)
 
 # load the token
 load('token.rdata')
+
+# Setup Google Sheets
+library(googlesheets4)
+
+# Authenticate using token. If no browser opens, the authentication works.
+gs4_auth(cache = "secrets", email = "tomaugust1985@gmail.com")
+
+# load species names
+species_table <- unique(read_sheet(ss = 'https://docs.google.com/spreadsheets/d/1h0oF3Lcxvl2HdnihFiYmHLzLwbfWBB5_Ha47yH-KAqo/edit?usp=sharing'))
 
 # Define UI 
 ui <- fluidPage(
@@ -89,8 +98,11 @@ server <- function(input, output, session) {
             ),
             passwordInput("password", label = "Password", 
                           placeholder = 'Enter your iNaturalist password'),
-            if (failed)
+            if (failed == 'user_pwd')
                 div(tags$b("Username or password incorrect", style = "color: red;")),
+            
+            if (failed == 'not_allowed')
+              div(tags$b("Your iNaturalist user account is not registered for Bat2iNat", style = "color: red;")),
             
             footer = tagList(
                 actionButton("login", "Login")
@@ -98,34 +110,82 @@ server <- function(input, output, session) {
         )
     }
     
-    if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
-      showModal(loginModal())
-    } else {
-      load('pwd.rdata')
-      vals$upload_token <-  pynat$get_access_token(pwd$username,
-                                                   pwd$pwd,
-                                                   token[[3]],
-                                                   token[[4]])
+    # Agreement dialogue to encourage good practise
+    agreementModal <- function(failed = FALSE) {
+      modalDialog(
+        size = 's',
+        tags$h1('Agreement',  style = 'text-align: center;'),
+        tags$p('Bat2iNat lets you upload lots of data, quickly. Which is
+                  great, unless you are uploading rubbish. Please follow these
+                  three simple rules:',
+                  style = 'text-align: center;'),
+        tags$p("1.", tags$b('Manually verify'), "all of your recordings before you upload
+                  them, don't blindly trust the classifier",
+                  style = 'text-align: center;'),
+        tags$p('2. Once uploaded,', tags$b('check all of your recordings'), 'on iNaturalist
+                  to ensure no errors have been made during upload',
+                  style = 'text-align: center;'),
+        tags$p('3.', tags$b('Support the community'), 'by helping to verify',
+                  a(href = 'https://www.inaturalist.org/observations/identify?q=%22Uploaded+using+Bat2iNat%22',
+                    "other people's records", target="_blank"),
+                  style = 'text-align: center;'),
+        tags$p('Abuse of Bat2iNat may result in your access being suspended',
+                  style = 'text-align: center;'),
+        footer = tagList(
+            actionButton("agree", 'I agree',
+                           style = 'background-color: #337ab7;
+                                    margin: 0 auto;
+                                    display: block;'),
+        )
+      )
     }
     
+    # If I am using this locally, login me in automatically
+    # if(!Sys.info()['user'] %in% c('t_a_a', 'tomaug')){
+      showModal(loginModal())
+    # } else {
+    #   load('pwd.rdata')
+    #   vals$upload_token <-  pynat$get_access_token(pwd$username,
+    #                                                pwd$pwd,
+    #                                                token[[3]],
+    #                                                token[[4]])
+    #   showModal(agreementModal())
+    # }
+    
     observeEvent(input$login, {
+      
+        # load permitted users
+        users <- read_sheet(ss = 'https://docs.google.com/spreadsheets/d/1FFVV9-iPQO6gyh-QZT599pImzgVaDU0GPyYTo9YQIiY/edit#gid=0')$users
         
-        # this can be used to test login
-        upload_token <- try({
+        if(tolower(input$username) %in% tolower(users)){
+          
+          # this can be used to test login
+          upload_token <- try({
             pynat$get_access_token(input$username,
                                    input$password,
                                    token[[3]],
                                    token[[4]])
-        }, silent = TRUE)
-        
-        vals$upload_token <- upload_token
-
-        if(length(upload_token) == 1 &
-            class(upload_token) == 'character'){
+          }, silent = TRUE)
+          
+          vals$upload_token <- upload_token
+          
+          if(length(upload_token) == 1 &
+             class(upload_token) == 'character'){
             removeModal()
+            showModal(agreementModal())
+          } else {
+            showModal(loginModal(failed = 'user_pwd'))
+          }
+          
         } else {
-            showModal(loginModal(failed = TRUE))
+          
+          showModal(loginModal(failed = 'not_allowed'))
+          
         }
+    })
+    
+    observeEvent(input$agree, {
+      removeModal()
     })
 
     # Delete the figure folder on session close    
@@ -155,7 +215,10 @@ server <- function(input, output, session) {
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
-                    md <- bat2inat::call_metadata(file, name = name, verbose = FALSE)
+
+                    md <- bat2inat::call_metadata(file, name = name,
+                                                  verbose = TRUE,
+                                                  sp_tab = species_table)
                     # print('HERE')
                     print(md)
                     
@@ -189,9 +252,13 @@ server <- function(input, output, session) {
                                           c(md$lat - (buf*0.7), md$long + buf),
                                           zoom = 15,
                                           type = 'osm')
+                            # print(str(mp))
                         })
                         
                         mapFile <- file.path(figDir, paste0(name, 'map.png'))
+                        cat(paste('Does figDir exist?'),dir.exists(figDir), '\n') 
+                        if(!dir.exists(figDir)) dir.create(figDir, recursive = TRUE)
+                        
                         # print(mapFile)
                         png(filename = mapFile,
                             width = floor(150 / (mp$tiles[[1]]$xres/mp$tiles[[1]]$yres)),
@@ -352,7 +419,7 @@ server <- function(input, output, session) {
                             observation_fields = of
                         )
                         cat('Done')
-                        
+         
                         vals$log <- rbind(vals$log, 
                                           data.frame(sp = md$sp,
                                                      lat = md$lat,
@@ -360,6 +427,7 @@ server <- function(input, output, session) {
                                                      date = md$date))
                         
                         if(length(resp) == 1) resp <- resp[[1]]
+
                         
                         incProgress(0.2 * (1/nrow(files)), detail = paste("Uploaded"))
                         insertUI(
