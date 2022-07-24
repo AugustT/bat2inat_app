@@ -304,7 +304,8 @@ server <- function(input, output, session) {
                         desc <- paste('Recorded on', md$model, md$firmware, '\n',
                                       'Call parameters could not automatically be extracted\n',
                                       'Recorder settings\n',
-                                      md$settings)
+                                      md$settings,
+                                      '\nUploaded using Bat2iNat')
                         cat('description created\n')
                         
                     } else {
@@ -316,7 +317,8 @@ server <- function(input, output, session) {
                                       'Av. min frequency (kHz):', round(median(TD$freq_min/1000)), '\n',
                                       'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
-                                      md$settings)
+                                      md$settings,
+                                      '\nUploaded using Bat2iNat')
                         
                         cat('description created\n')
                         
