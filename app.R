@@ -407,7 +407,11 @@ server <- function(input, output, session) {
                     if(post){
                         
                         cat('Posting data...')
-                        resp <- pynat$create_observation(
+                        attempt <- 1
+                        fail <- TRUE
+                        while(fail){
+                          attempt <- attempt + 1
+                          resp <- try(pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
                             description = desc,
@@ -417,7 +421,16 @@ server <- function(input, output, session) {
                             sounds = file,
                             access_token = vals$upload_token,
                             observation_fields = of
-                        )
+                          ))
+                          if(!"try-error" %in% class(resp)){
+                            fail <- FALSE
+                          } else if(attempt > 5){
+                            fail <- FALSE
+                          } else{
+                            sleep(10)
+                          }
+                        }
+                        
                         cat('Done')
          
                         vals$log <- rbind(vals$log, 
