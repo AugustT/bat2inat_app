@@ -427,7 +427,7 @@ server <- function(input, output, session) {
                           } else if(attempt > 5){
                             fail <- FALSE
                           } else{
-                            sleep(10)
+                            Sys.sleep(10)
                           }
                         }
                         
