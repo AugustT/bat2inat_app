@@ -286,6 +286,11 @@ server <- function(input, output, session) {
                         # print(md)
                         # print(vals$log)
                         
+                        # if no species is given assign it to 'Chiroptera'
+                        if(length(md$sp) == 0){
+                          md$sp <- "Chiroptera"
+                        }
+                        
                         log_check <- vals$log[vals$log$sp == md$sp &
                                               # vals$log$lat == md$lat &
                                               # vals$log$long == md$long &
