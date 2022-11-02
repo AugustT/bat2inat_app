@@ -132,7 +132,7 @@ server <- function(input, output, session) {
                   to ensure no errors have been made during upload',
                   style = 'text-align: center;'),
         tags$p('3.', tags$b('Support the community'), 'by helping to verify',
-                  a(href = 'https://www.inaturalist.org/observations/identify?q=bat2inat',
+                  a(href = 'https://www.inaturalist.org/observations/identify?q=%22Uploaded+using+Bat2iNat%22',
                     "other people's records", target="_blank"),
                   style = 'text-align: center;'),
         tags$p('Abuse of Bat2iNat may result in your access being suspended',
@@ -221,6 +221,7 @@ server <- function(input, output, session) {
                     
                     # get metadata
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Extracting metadata"))
+
                     md <- bat2inat::call_metadata(file, name = name,
                                                   verbose = TRUE,
                                                   sp_tab = species_table)
@@ -330,9 +331,8 @@ server <- function(input, output, session) {
                     dupe <- is_duplicate(md = md,
                                          radius = radius,
                                          username = token$username,
-                                         verbose = TRUE)
-                    # print('HERE')
-                    
+                                         verbose = FALSE)
+
                     if(dupe){
                         
                         # print('duplicate online')
@@ -367,21 +367,18 @@ server <- function(input, output, session) {
                                           samp_freq = md$sampling,
                                           tempDir = figDir,
                                           verbose = FALSE)
-                    # print(pngs[1])
-                    
-                    
+
                     # load token
                     incProgress(0.2 * (1/nrow(files)), detail = paste('File', i, "- Uploading observation data"))
-                    # print('uploading')
-                    # print(TD)
-                    # print(md)
+
                     
                     if(is.null(TD$freq_peak)){
                         
                         desc <- paste('Recorded on', md$model, md$firmware, '\n',
                                       'Call parameters could not automatically be extracted\n',
                                       'Recorder settings\n',
-                                      md$settings)
+                                      md$settings,
+                                      '\nUploaded using Bat2iNat')
                         cat('description created\n')
                         
                     } else {
@@ -393,7 +390,8 @@ server <- function(input, output, session) {
                                       'Av. min frequency (kHz):', round(median(TD$freq_min/1000)), '\n',
                                       'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
-                                      md$settings)
+                                      md$settings,
+                                      '\nUploaded using Bat2iNat')
                         
                         cat('description created\n')
                         
@@ -415,7 +413,11 @@ server <- function(input, output, session) {
                     if(post){
                         
                         cat('Posting data...')
-                        resp <- pynat$create_observation(
+                        attempt <- 1
+                        fail <- TRUE
+                        while(fail){
+                          attempt <- attempt + 1
+                          resp <- try(pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
                             description = paste(input$additionalText, '/n/n/',  desc),
@@ -425,19 +427,26 @@ server <- function(input, output, session) {
                             sounds = file,
                             access_token = vals$upload_token,
                             observation_fields = of
-                        )
+                          ))
+                          if(!"try-error" %in% class(resp)){
+                            fail <- FALSE
+                          } else if(attempt > 5){
+                            fail <- FALSE
+                          } else{
+                            Sys.sleep(10)
+                          }
+                        }
+                        
                         cat('Done')
-                        
-                        print(paste('length of resp is:', length(resp)))
-                        if(length(resp) == 1) resp <- resp[[1]]
-                        
+         
                         vals$log <- rbind(vals$log, 
                                           data.frame(sp = md$sp,
                                                      lat = md$lat,
                                                      long = md$long,
                                                      date = md$date))
-                        # print(resp[[1]])
-                        print(vals$log)
+                        
+                        if(length(resp) == 1) resp <- resp[[1]]
+
                         
                         incProgress(0.2 * (1/nrow(files)), detail = paste("Uploaded"))
                         insertUI(
