@@ -43,8 +43,6 @@ options(shiny.maxRequestSize = 10 * 1024^2)
 # Set FALSE for testing
 post <- TRUE
 
-radius <- 30
-
 # Create the folder where we will put figures
 # This folder is deleted when the session ends
 figDir <- file.path('www', basename(tempfile()))
@@ -76,12 +74,21 @@ ui <- fluidPage(
                       multiple = TRUE, 
                       label = 'Choose files (max 10MB each)',
                       accept = 'audio/*'),
+            sliderInput(inputId = 'radius',
+                        label = 'Distance needed between independent observations (meters)',
+                        ticks = FALSE,
+                        min = 0, 
+                        max = 100, 
+                        step = 5, 
+                        value = 30),
             textInput(inputId = 'additionalText',
                       label = 'Comment',
                       value = '',
                       placeholder = "Text added here will be added to all observations"),
             actionButton(inputId = 'submit', 
-                         label = 'Submit'),
+                         label = 'Submit',
+                         icon("paper-plane"), 
+                         style = "color: #fff; background-color: #337ab7; border-color: #2e6da4"),
             div(id = 'console')
         )
     )
@@ -297,7 +304,7 @@ server <- function(input, output, session) {
                                                  fun = distHaversine))
                             }
                             
-                            if(any(dists < radius)){
+                            if(any(dists < input$radius)){
                                 
                                 incProgress(0.8 * (1/nrow(files)), 
                                             detail = paste('File', i, 
@@ -329,7 +336,7 @@ server <- function(input, output, session) {
                     # print(md)
                     # print(token$username)
                     dupe <- is_duplicate(md = md,
-                                         radius = radius,
+                                         radius = input$radius,
                                          username = token$username,
                                          verbose = FALSE)
 
@@ -375,7 +382,7 @@ server <- function(input, output, session) {
                     if(is.null(TD$freq_peak)){
                         
                         desc <- paste('Recorded on', md$model, md$firmware, '\n',
-                                      'Call parameters could not automatically be extracted\n',
+                                      # 'Call parameters could not automatically be extracted\n',
                                       'Recorder settings\n',
                                       md$settings,
                                       '\nUploaded using Bat2iNat')
@@ -384,11 +391,11 @@ server <- function(input, output, session) {
                     } else {
                         
                         desc <- paste('Recorded on', md$model, md$firmware, '\n',
-                                      'Number of good quality calls:', length(TD$freq_peak), '\n',
-                                      'Av. peak frequency (kHz):', round(median(TD$freq_peak/1000)), '\n',
-                                      'Av. max frequency (kHz):', round(median(TD$freq_max/1000)), '\n',
-                                      'Av. min frequency (kHz):', round(median(TD$freq_min/1000)), '\n',
-                                      'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
+                                      # 'Number of good quality calls:', length(TD$freq_peak), '\n',
+                                      # 'Av. peak frequency (kHz):', round(median(TD$freq_peak/1000)), '\n',
+                                      # 'Av. max frequency (kHz):', round(median(TD$freq_max/1000)), '\n',
+                                      # 'Av. min frequency (kHz):', round(median(TD$freq_min/1000)), '\n',
+                                      # 'Call durations (ms):', round(median(TD$call_duration), digits = 1), '\n',
                                       'Recorder settings\n',
                                       md$settings,
                                       '\nUploaded using Bat2iNat')
@@ -403,11 +410,11 @@ server <- function(input, output, session) {
                                '12583' = md$time)
                     
                     # Add average frequency if its there
-                    if(!is.null(TD$freq_peak)){
-                        
-                        of <- c(of, '308' = round(median(TD$freq_peak/1000)))
-                        
-                    }
+                    # if(!is.null(TD$freq_peak)){
+                    #     
+                    #     of <- c(of, '308' = round(median(TD$freq_peak/1000)))
+                    #     
+                    # }
                     
                     ## Posting the data ##
                     if(post){
@@ -420,7 +427,11 @@ server <- function(input, output, session) {
                           resp <- try(pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
-                            description = paste(input$additionalText, '/n/n/',  desc),
+                            description = ifelse(test = input$additionalText == '',
+                                                 yes = desc,
+                                                 no = paste(input$additionalText,
+                                                            '\n\n---------------\n\n',
+                                                            desc)),
                             latitude = md$lat, 
                             longitude = md$long,
                             photos = pngs,
