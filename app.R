@@ -76,6 +76,12 @@ ui <- fluidPage(
                       multiple = TRUE, 
                       label = 'Choose files (max 10MB each)',
                       accept = 'audio/*'),
+            textInput(inputId = 'additionalText',
+                      label = 'Comment',
+                      value = '',
+                      placeholder = "Text added here will be added to all observations"),
+            actionButton(inputId = 'submit', 
+                         label = 'Submit'),
             div(id = 'console')
         )
     )
@@ -193,7 +199,7 @@ server <- function(input, output, session) {
         unlink(x = figDir, recursive = TRUE)
     })
     
-    observeEvent(input$files, {
+    observeEvent(input$submit, {
         
         files <- input$files
         str(files)
@@ -412,7 +418,7 @@ server <- function(input, output, session) {
                         resp <- pynat$create_observation(
                             species_guess = md$sp,
                             observed_on = paste(md$date, md$time),
-                            description = desc,
+                            description = paste(input$additionalText, '/n/n/',  desc),
                             latitude = md$lat, 
                             longitude = md$long,
                             photos = pngs,
